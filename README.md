@@ -402,4 +402,3 @@ Portfolio: [https://kmwhid.netlify.app/](https://kmwhid.netlify.app/)
 
 ---
 
-**Note**: Remember to never commit your `.env` file or expose your secret keys. Add `.env` to your `.gitignore` file.
