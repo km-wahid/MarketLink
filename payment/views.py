@@ -8,49 +8,40 @@ import stripe
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-
+from rest_framework.exceptions import ValidationError
 from django.http import JsonResponse
 from orders.models import RepairOrder
-
+from common.redis import redis_client
 from users.models import User
 
 class StripeCheckoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        import stripe
-        stripe.api_key = settings.STRIPE_SECRET_KEY  # ✅ set here
-
+        stripe.api_key = settings.STRIPE_SECRET_KEY
         user = request.user
-        try:
-            cart = Cart.objects.get(user=user)
-        except Cart.DoesNotExist:
-            return Response({"error": "Cart is empty"}, status=400)
-
-        if not cart.items.exists():
-            return Response({"error": "Cart is empty"}, status=400)
-
-        total = 0
-        line_items = []
+        cart = Cart.objects.get(user=user)
 
         for item in cart.items.all():
-            total += item.variant.price * item.quantity
-            line_items.append({
-                "price_data": {
-                    "currency": "usd",
-                    "product_data": {"name": item.variant.name},
-                    "unit_amount": int(item.variant.price * 100),
-                },
-                "quantity": item.quantity
-            })
+            lock_key = f"lock:variant:{item.variant.id}"
+            lock = redis_client.lock(lock_key, timeout=10)
 
-        intent = stripe.PaymentIntent.create(
-            amount=int(total * 100),
-            currency="usd",
-            metadata={"user_id": str(user.id)},
-        )
+            if not lock.acquire(blocking=False):
+                raise ValidationError("This service is currently being booked. Try again.")
 
-        return Response({"client_secret": intent.client_secret})
+            try:
+                with transaction.atomic():
+                    item.variant.refresh_from_db()
+
+                    if item.variant.stock < item.quantity:
+                        raise ValidationError("Service sold out")
+
+                    item.variant.stock -= item.quantity
+                    item.variant.save()
+
+            finally:
+                lock.release()
+
 
 @csrf_exempt
 def stripe_webhook(request):

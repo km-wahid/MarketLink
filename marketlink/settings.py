@@ -36,6 +36,11 @@ ALLOWED_HOSTS = [
 # ]
 
 
+
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/1"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_BACKEND = "django-db"
 # Application definition
 
 INSTALLED_APPS = [
@@ -53,6 +58,7 @@ INSTALLED_APPS = [
     'services',
     'common',
     'cart',
+    "django_celery_results",
     
 ]
 
@@ -175,3 +181,15 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 
 
 stripe.api_key = os.environ.get("STRIPE_API_KEY")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
+REDIS_URL = "redis://127.0.0.1:6379/1"
